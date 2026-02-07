@@ -1,0 +1,114 @@
+#!/usr/bin/env sh
+
+# This library helps to work with delimited strings
+# as a way to form arrays and maintain posix compliance
+# so as to be compatible with as many systems as possible
+
+isEmpty () {
+
+    if [ -z "$1" ];
+    then 
+        return 0
+    else
+        return 1
+    fi
+
+}
+
+
+append () { # $1 - array, #2 - string
+
+    if ! isEmpty "$1"; 
+    then
+        printf %s "$1:$2"
+    else
+        printf %s "$2"
+    fi
+}
+
+# indexes the first instance of an element
+indexOf () { # index an element, starts at 1
+
+    OLD_IFS=$IFS
+    IFS=:
+
+    index=0
+
+    for element in $1;
+    do
+
+        index=$((index + 1))
+
+        if [ "$element" = "$2" ]; 
+        then 
+            IFS=$OLD_IFS
+            printf %i $index
+            break
+        fi
+        
+    done
+
+}
+
+
+removeByIndex () { # $1 - index
+
+    printf %s $1 | cut --complement -d: -f$2
+
+}
+
+# removes the first instance of an element
+removeByElement () { # $1 - element
+
+    printf %s $(removeByIndex "$1" $(indexOf $1 $2))
+}
+
+length () {
+
+    OLD_IFS=$IFS
+    IFS=:
+
+    size=0
+
+    for element in $1;
+    do
+        size=$((size + 1))
+    done
+
+    IFS=$old_IFS
+    
+    printf %i $size
+
+}
+
+# =====
+# HOW TO USE
+# =====
+
+# = EXAMPLE ARRAY =
+# "element1:element2:element3:"
+
+# = EMPTY ARRAY STRING =
+# emptyArray=""
+
+# = APPEND =
+# emptyArray=$(append "$emptyArray" "test1")
+# emptyArray=$(append "$emptyArray" "test2")
+# emptyArray=$(append "$emptyArray" "test3")
+# emptyArray=$(append "$emptyArray" "test4")
+# emptyArray=$(append "$emptyArray" "test5")
+
+# echo $emptyArray
+
+# = REMOVE BY INDEX =
+# emptyArray=$(removeByIndex "$emptyArray" 4)
+
+# echo $emptyArray
+
+# = REMOVE BY ELEMENT =
+# emptyArray=$(removeByElement "$emptyArray" "test5")
+
+# echo $emptyArray
+
+# = GET LENGTH =
+# echo $(length "$emptyArray")

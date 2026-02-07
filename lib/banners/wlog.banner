@@ -1,0 +1,10 @@
+wlog - Warden Logging Handler
+
+usage: wlog -d
+usage: wlog --dump
+
+
+Options:
+   -d, --dump                                     Dump log data to terminal
+   -h, --help                                     Print this message
+

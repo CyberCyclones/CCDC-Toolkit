@@ -1,0 +1,35 @@
+wcfg - Warden Configuration
+
+usage: wcfg --change-password
+usage: wcfg --l ip 127.0.0.1
+usage: wcfg --lock user username
+
+usage: wcfg --lock-enable ip 127.0.0.1
+usage: wcfg -le user username
+
+usage: wcfg --lock-disable ip 127.0.0.1
+usage: wcfg --ld user username
+
+
+Options:
+  -ls, --list-locks                               List active locks
+   -l, --lock <TYPE> <VALUE>                      Initiate a lock for an ip addr
+                                                  or user
+  -le, --lock-enable <TYPE> <VALUE>               Enable a disabled lock
+  -ld, --lock-disable <TYPE> <VALUE>              Disable an enabled lock
+   -p, --change-password                          Change shell breakout password
+   -h, --help                                     Print this message
+       --uninstall                                Uninstall Warden
+  -sl, --syslock <enable/disable/status>          Enable, disable, or check 
+                                                  system lock
+
+Types: 
+
+  ip, IP                  Defines an ip address based lock type
+  user, USER              Defines a user based lock typ
+
+Values:
+
+  ip, IP -> valid ip address values
+  user, USER -> valid system usernames
+

@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+
+RemoveWarden () {
+
+    rm -rf /etc/systemd/system/wlog.service
+    systemctl disable wlog.service 2> /dev/null
+    systemctl stop wlog.service 2> /dev/null
+
+    # REMOVE BLUESHELL ADMINISTRATION USER
+    userdel warden
+    groupdel warden-admin
+
+    # CLEANUP INSTALL PATHS
+    rm -rf /var/log/warden
+    rm -rf /var/lib/warden
+    rm -rf /etc/warden
+    rm -rf /opt/warden
+    rm -rf /run/warden
+
+    rm -rf /usr/bin/wsh
+    rm -rf /usr/bin/wlog
+    rm -rf /usr/bin/wcfg
+    
+    sed -i '\|/bin/wsh|d' /etc/shells
+
+}
+
+read -p "Would you like to remove Warden from your system? (Y/N): " input
+case $input in
+    [Yy]*)
+        if RemoveWarden;
+        then 
+            echo "Warden removed successfully from your system!"
+        fi
+    ;;
+    *)
+        exit 0
+    ;;
+esac

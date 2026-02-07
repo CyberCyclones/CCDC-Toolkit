@@ -1,0 +1,83 @@
+#!/usr/bin/env sh
+
+LOG_PATH="/var/log/warden"
+LOG_FILE="wlog.log"
+FIFO="/run/warden/wlog/sink"
+
+help () {
+    cat "/var/lib/warden/banners/wlog.banner"
+}
+
+usage () {
+    echo "usage: wlog -d"
+    echo "usage: wlog --dump"
+}
+
+RunDaemon () {
+
+    [ -p "$FIFO" ] || mkfifo "$FIFO"
+
+    chmod 622 $FIFO
+
+    touch "$LOG_PATH/$LOG_FILE"
+    chgrp -R warden-admin "$LOG_PATH"
+    chmod -R 750 "$LOG_PATH"
+
+    exec 3< "$FIFO"
+    while true; do
+        while read -r line <&3;
+        do
+            echo "$line" >> "$LOG_PATH/$LOG_FILE"
+        done
+    done
+
+
+}
+
+if [ $# -eq 0 ];
+then
+
+    if [ "$USER" != "warden" ];
+    then
+        echo "wlog: Permission Denied"
+        exit 1
+    else
+        continue
+    fi
+
+    if systemctl status wlog.service;
+    then
+        RunDaemon
+    fi
+
+elif [ $# -eq 1 ];
+then
+    if id -Gn "$USER" | grep -qw "warden-admin"; 
+    then
+        case "$1" in 
+
+        "--dump"|"-d")
+
+            if ! cat "$LOG_PATH/$LOG_FILE" 2> /dev/null;
+            then
+                echo "wlog: Permission Denied"
+            fi
+            exit 0
+        ;;
+        "-h"|"--help")
+            help
+            exit 0
+        ;;
+        *)
+            usage
+            exit 1
+        ;;
+        esac
+    else
+        echo "wlog: Permission Denied"
+    fi
+
+fi
+    
+
+

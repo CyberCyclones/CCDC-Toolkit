@@ -1,0 +1,113 @@
+#!/usr/bin/env sh
+
+# DESCRIPTION
+#
+
+SYS_LOCK="/etc/warden/sys.lock"
+USR_LOCK="/etc/warden/user.lock"
+ADR_LOCK="/etc/warden/addr.lock"
+AUTH_FILE="/etc/warden/auth"
+
+. /etc/warden/warden.conf
+. /var/lib/warden/utilities/log
+
+# Checks if a value provided for a warden lock
+# file contains a separately provided value for
+# locking purposes
+checkLock (){
+
+    if [ -f $SYS_LOCK ]; 
+    then
+        return 0
+    fi
+    
+    if [ -f $USR_LOCK ]; 
+    then
+        while IFS=":" read -r LOCK_SET LOCK_VALUE || [ -n "$LOCK_SET" ];
+        do
+            if [ "$LOCK_SET" = "1" ] && [ "$LOCK_VALUE" = "$1" ]
+            then
+                return 0
+            fi
+        done < "$USR_LOCK"
+    fi
+
+    if [ -f $ADR_LOCK ]; 
+        then
+        while IFS=":" read -r LOCK_SET LOCK_VALUE || [ -n "$LOCK_SET" ];
+        do
+            if [ "$LOCK_SET" = "1" ] && [ "$LOCK_VALUE" = "$SSH_CONNECTION" ];
+            then
+                return 0	
+            fi
+        done < "$ADR_LOCK"
+    fi
+
+    return 1
+    
+}
+
+PasswordAuth () {
+
+    if [ "$(echo $1 | sha256sum)" == "$(cat $AUTH_FILE | grep - )" ]; 
+    then
+        return 0
+    else
+        return 1
+    fi
+}
+
+AuthPrompt () {
+
+    for ((try=0;try<PASSWORD_TRYS;try++));
+    do
+        echo -n "Password: "
+        read -s -r password_input; echo
+
+        if PasswordAuth "$password_input"; then
+            return 0
+        else
+            echo "incorrect password..."
+        fi
+    done
+    return 1
+
+}
+
+UpdatePassword () {
+
+    if echo $newPass | sha256sum > "$AUTH_FILE";
+    then
+        log "[PASS][$(date -u +"%Y%m%d-%H:%M:%S")] Password for breakout command has been updated"
+        return 0
+    else
+        return 1
+    fi
+
+}
+
+NewPasswordPrompt () {
+
+    passwordUpdated=false
+
+    while ! $passwordUpdated;
+    do
+        echo -n "New Password: "
+        read -s -r newPass; echo
+        echo -n "Confirm Password: "
+        read -s -r confPass; echo
+        
+        if [ "$newPass" == "$confPass" ]; then
+            if UpdatePassword $newPass; then
+                passwordUpdated=true
+                echo "Password Updated"
+                return 0
+            else
+                return 1
+            fi
+        else
+            echo "Passwords do not match"
+        fi
+    done
+
+}

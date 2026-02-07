@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+
+# DESCRIPTION
+#
+
+log () {
+    if [ -p "/run/warden/wlog/sink" ];
+    then
+        echo "$1" > /run/warden/wlog/sink
+        return 0
+    else
+        return 1
+    fi
+
+}

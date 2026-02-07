@@ -1,0 +1,172 @@
+#!/usr/bin/env sh
+
+# LIBRARY IMPORTS
+. /var/lib/warden/utilities/auth
+. /var/lib/warden/utilities/log
+. /var/lib/warden/utilities/array
+
+# CONFIG IMPORT
+. /etc/warden/warden.conf
+
+##################################
+##################################
+
+# LOCAL SESSION LOCK VARIABLE
+SESSION_LOCK=false
+
+# CHECK IF THE SESSION IS SSHD RELATED
+# AND SET VARIABLES APPROPIATELY
+if [ -z $SSH_CONNECTION ];then
+    SESSION_TYPE="SYS"
+else
+    SESSION_TYPE="REM"
+	CLIENT_IP=$SSH_CONNECTION
+fi
+
+CLIENT_TTY=$(ps hotty $$)
+
+
+# check if the entered argument is in the PERMITTED_COMMANDS array
+# as an element. Imported from config
+commandCheck () {
+	
+	OLD_IFS=$IFS
+	IFS=:
+
+	for allowedCommand in $ALLOWED_COMMANDS;
+	do
+		if [ "$1" = "$allowedCommand" ];
+		then
+			IFS=$OLD_IFS
+			return 0
+		fi
+	done
+
+	IFS=$OLD_IFS
+	return 1
+
+}
+
+Breakout () {
+
+    if ! $SESSION_LOCK; 
+    then
+        if AuthPrompt;
+        then
+            if [ "$SESSION_TYPE" = "REM" ];
+            then
+                log "[BRKA][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] Breakout session created for $USER from $CLIENT_IP on $CLIENT_TTY"
+            else
+                log "[BRKA][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] Breakout session created for $USER on $CLIENT_TTY"
+            fi
+            # LOG ON SUCCESSFUL BREAKOUT
+            /bin/bash
+        else
+            if [ "$SESSION_TYPE" = "REM" ];
+            then
+                log "[LOCK][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] Account locked for $USER from $CLIENT_IP on $CLIENT_TTY"
+            else
+                log "[LOCK][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] Account locked for $USER on $CLIENT_TTY"
+            fi
+            # LOG ON SESSION LOCK
+
+            SESSION_LOCK=true
+        fi
+    else 
+        # LOG ON SESSION DENIED
+        echo "Access Denied..."
+    fi
+
+}
+
+# Main executer
+# Checks if number of arguments is 0 
+
+# echo -e "[ CONNECTION ESTABLISHED ] ($(date +'%D %H:%M:%S')) $SSH_CLIENT_IP $USER" >> ~/blueshell_logs/log
+# the initial indicator of shell instance
+# notify-send -u critical "WARDEN STATUS: WARDEN-SHELL SESSION CREATED" "User <b>$USER</b> was logged in from <b>$SSH_CLIENT_IP</b> with terminal instance <b>$SSH_CLIENT_TTY</b> ($(date +'%D %H:%M:%S'))" 2> /dev/null
+
+# The actual shell environment that the user is dropped into
+shell () {
+
+    if [ "$SESSION_TYPE" = "REM" ];
+    then
+        log "[SESO][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] Session created for $USER from $CLIENT_IP on $CLIENT_TTY"
+    else
+        log "[SESO][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] Session created for $USER on $CLIENT_TTY"
+    fi
+    # Prevent user from exiting through 
+    # keyboard calls
+    trap '' INT TERM TSTP
+    set -f
+
+    if ! checkLock $USER;
+    then
+
+        # -e and -p are not posix compliant
+        # however, for the ease of use and 
+        # QOL improvements, it's worth it
+        cd $HOME
+        while read -rep "$(pwd) $ " input
+        do
+
+            # Preliminary case check for shell
+            # meta/escape characters.
+            # Should only filter for dashes and alphanumerics
+            case "$input" in
+
+            "")
+            ;;
+
+            *[^a-zA-Z0-9_.\ /-]*)
+                log "[CMDB][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] $input"
+                # Commands that contain any weird characters will be thrown this error
+                printf '%s\n' "ERROR: Command may contain restricted characters..."
+            ;;
+
+            *)
+                # Input sanitation for any strays
+                input=$(printf '%s' "$input" | tr -d ';&|><$`\\'\''"')
+                set -- $input # Breaks apart the command into constituent parts
+                command="$1" # The first command run will have a prelim check
+                shift # separates arguments and commands
+
+                if [ "$command" = "exit" ]; # If command is exit
+                then
+                    # LOG ON EXIT
+                    log "[SESE][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] Session closed for $USER on $CLIENT_TTY"
+
+                    exit 0
+                elif [ "$command" = "$BREAKOUT_COMMAND" ];
+                then
+                    # LOG ON BREAKOUT REQUEST
+                    log "[BRKR][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S") Session breakout requested for $USER on $CLIENT_TTY"
+
+                    Breakout
+                elif commandCheck "$command"; # If command check passes
+                then
+                    # LOG ON COMMAND EXEC
+                    log "[CMDA][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] $command $@"
+                    
+
+                    "$command" "$@" 2> /dev/null
+
+                else
+                    # LOG ON UNAVAILABLE COMMANDS
+                    log "[CMDB][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] $command $@"
+
+                    printf '%s\n' "$command command not available..."
+                fi
+            ;;
+        
+            esac
+        done
+    else
+        log "[SESE][$SESSION_TYPE][$(date -u +"%Y%m%d-%H:%M:%S")] Session denied for $USER due to lock"
+    fi
+    
+    exit 0
+
+}
+
+shell

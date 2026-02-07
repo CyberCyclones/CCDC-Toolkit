@@ -1,0 +1,157 @@
+#!/usr/bin/env sh
+
+# Change Password
+
+. /var/lib/warden/utilities/auth
+. /var/lib/warden/utilities/log
+
+help () {
+	cat "/var/lib/warden/banners/wcfg.banner"	
+}
+
+usage () {
+    echo "usage: wcfg --change-password"
+	echo "usage: wcfg --l ip 127.0.0.1"
+	echo "usage: wcfg --lock user username"
+	echo
+	echo "usage: wcfg --lock-enable ip 127.0.0.1"
+	echo "usage: wcfg -le user username"
+	echo
+	echo "usage: wcfg --lock-disable ip 127.0.0.1"
+	echo "usage: wcfg --ld user username"
+}
+
+if id -Gn "$USER" | grep -qw "warden-admin"; 
+then
+    case "$1" in 
+	
+	"-ls"|"--list-locks")
+		echo "- USER LOCKS -"
+		while IFS=":" read -r LOCK_SET LOCK_VALUE || [ -n "$LOCK_SET" ];
+		do
+			case "$LOCK_SET" in
+			"1")
+				printf "LOCKED\t\t\t%s\n" "$LOCK_VALUE"
+				;;
+			"0")
+				printf "UNLOCKED\t\t%s\n" "$LOCK_VALUE"
+				;;
+    		esac
+		done < "$USR_LOCK"
+		
+		echo
+		echo "- ADDRESS LOCKS -"
+		while IFS=":" read LOCK_SET LOCK_VALUE || [ -n "$LOCK_SET" ];
+		do
+			case "$LOCK_SET" in
+			"1")
+				printf "LOCKED\t\t\t%s\n" "$LOCK_VALUE"
+				;;
+			"0")
+				printf "UNLOCKED\t\t%s\n" "$LOCK_VALUE"
+				;;
+    		esac
+		done < "$ADR_LOCK"
+	;;
+
+	"-l"|"--lock")
+		if ! [ $# -eq 3 ];
+		then
+			usage
+		fi
+
+		case $2 in
+		"ip"|"IP")
+			if ! grep -q "1:$3" $ADR_LOCK && ! grep -q "0:$3" $ADR_LOCK; 
+			then
+				printf "%s\n" "1:$3" >> $ADR_LOCK
+			else
+				echo "Lock already present"
+			fi
+		;;
+		"user"|"USER")
+			if ! grep -q "1:$3" $USR_LOCK && ! grep -q "0:$3" $USR_LOCK; 
+			then
+				printf "%s\n" "1:$3" >> $USR_LOCK
+			else
+				echo "Lock already present"
+			fi
+		;;
+		esac
+	;;
+	
+	"-le"|"--lock-enable")
+		case $2 in
+		"ip"|"IP")
+			sed -i "s/0:$3/1:$3/" $ADR_LOCK
+		;;
+		"user"|"USER")
+			sed -i "s/0:$3/1:$3/" $USR_LOCK
+		;;
+		esac
+		
+	;;
+
+	"-ld"|"--lock-disable")
+		case $2 in
+		"ip"|"IP")
+			sed -i "s/1:$3/0:$3/" $ADR_LOCK
+		;;
+		"user"|"USER")
+			sed -i "s/1:$3/0:$3/" $USR_LOCK
+		;;
+		esac
+	;;
+
+	"-p"|"--change-password")
+		if AuthPrompt;
+		then
+			NewPasswordPrompt
+		else
+			echo "Password data unchanged..."
+		fi
+	;;
+
+	"-h"|"--help")
+		help
+	;;
+
+	"--uninstall")
+		/usr/bin/env sh /opt/warden/uninstall
+	;;
+	"-sl"|"--syslock")
+		if ! [ $# -eq 2 ];
+		then
+			usage
+		fi
+
+		case $2 in 
+		"enable")
+			touch /etc/warden/sys.lock
+		;;
+		
+		"disable")
+			rm /etc/warden/sys.lock
+		;;
+
+		"status")
+			if [ -f $SYS_LOCK ];
+			then
+				echo "locked"
+				exit 0
+			else 
+				echo "not locked"
+				exit 1
+			fi
+		;;
+		esac
+	
+	;;
+	*)
+		usage
+	;;
+	esac
+else
+    echo "wcfg: Permission Denied"
+	exit 1
+fi

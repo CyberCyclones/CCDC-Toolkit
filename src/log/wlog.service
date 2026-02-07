@@ -1,0 +1,11 @@
+Description=Warden Logging Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=warden
+ExecStart=/usr/bin/wlog
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,256 @@
+#!/usr/bin/env sh
+
+. ./lib/utilities/colors
+. ./lib/utilities/print
+
+AUTH_FILE="/etc/warden/auth"
+
+InstallWarden () {
+    
+    echo
+    print "${YELLOW}[-] INSTALL A SERVICE ACCOUNT"
+    print "${RED}[ ] CREATE FILES/DIRECTORIES"
+    print "${RED}[ ] INSTALL WARDEN FILES"
+    print "${RED}[ ] START SERVICES"
+    print "${RED}[ ] CLEANUP"
+    echo "[0/5][-----]"
+
+    # INSTALLATION STEP 1 -> SERVICE ACCOUNT
+    # Generate a service account for Blueshell 
+    # orchestration, maintenance, and administration
+    useradd -r -d / -s /sbin/false -c "Warden Administration User" warden
+    groupadd warden-admin
+    usermod -aG warden-admin warden
+    passwd -l warden 1> /dev/null
+
+    # SERVICE ACCOUNT VALIDATION
+    if ! getent passwd warden > /dev/null 2>&1;
+    then
+        printCritical "Failed to install Blueshell: Could not create service user account..."
+        return 1
+    fi
+
+    echo
+    printf "\e[6A\e[J"
+    print "${GREEN}[✓] INSTALL A SERVICE ACCOUNT"
+    print "${YELLOW}[-] CREATE FILES/DIRECTORIES"
+    print "${RED}[ ] INSTALL WARDEN"
+    print "${RED}[ ] START SERVICES"
+    print "${RED}[ ] CLEANUP"
+    echo -n "[1/5][=----]"
+    
+
+    # ==========
+
+    # INSTALLATION STEP 2 -> FILES AND DIRECTORIES
+    # Generate file paths for configurations and logging 
+    # and manage access with ownership
+
+    # LOGGING PATH
+    mkdir /var/log/warden
+    chown warden /var/log/warden
+    
+    # WORKING FILE PATH
+    mkdir /var/lib/warden
+    chown warden /var/lib/warden
+
+    # CONFIG FILE PATH
+    mkdir /etc/warden
+    chown warden /etc/warden
+
+    # INSTALL PATH
+    mkdir /opt/warden
+    chown -R warden /opt/warden
+
+    # RUN PATH
+    mkdir /run/warden
+    mkdir /run/warden/wlog
+    chown -R warden /run/warden
+
+    # FILE PATH VALIDATION INSTALLATION
+    if [ ! -e /var/log/warden ] || 
+       [ ! -e /var/lib/warden ] || 
+       [ ! -e /etc/warden ] ||
+       [ ! -e /run/warden ] ||
+       [ ! -e /opt/warden ];  
+    then 
+        printCritical "Failed to install Warden: Could not validate installation paths..."
+        return 1
+    fi
+
+    printf "\e[6A\e[J"
+    print "${GREEN}[✓] INSTALL A SERVICE ACCOUNT"
+    print "${GREEN}[✓] CREATE FILES/DIRECTORIES"
+    print "${YELLOW}[-] INSTALL WARDEN"
+    print "${RED}[ ] START SERVICES"
+    print "${RED}[ ] CLEANUP"
+    echo -n "[2/5][==---]"
+
+    # ==========
+
+    # INSTALLATION STEP 3 -> INSTALL BLUESHELL SCRIPTS LOCALLY - /opt/blueshell
+    # Downloads the installation package from github -> online
+    # Extracts local archive for files -> offline
+    # Moves a copy of downloaded files and installer script within the install path
+
+    # MOVE LIBRARY AND CONFIG FILES TO DIRS
+    cp -r ./etc/* /etc/warden  1>/dev/null
+    cp -r ./lib/* /var/lib/warden  1>/dev/null
+    
+    # MOVE SCRIPTS TO /USR/BIN
+    cp ./src/wsh /usr/bin 1>/dev/null
+    cp ./src/wcfg /usr/bin 1>/dev/null
+    cp ./src/log/wlog /usr/bin 1>/dev/null
+
+    # MOVE HELPER TO /OPT DIR
+    cp -r ./.install/uninstall /opt/warden 1>/dev/null
+    
+    # MOVE SERVICE FILE FOR SYSTEMD
+    cp ./src/log/wlog.service /etc/systemd/system  1>/dev/null
+    
+    # MAKE A COPY OF THE DATA AND MOVE IT TO /OPT FOR HELPER
+    zip -r /opt/warden/.data ./ 1>/dev/null
+    
+    # ADD WSH TO VALID SHELLS
+    printf "%s\n" "/bin/wsh" | tee -a /etc/shells
+
+    printf "\e[6A\e[J"
+    print "${GREEN}[✓] INSTALL A SERVICE ACCOUNT"
+    print "${GREEN}[✓] CREATE FILES/DIRECTORIES"
+    print "${GREEN}[✓] INSTALL WARDEN"
+    print "${YELLOW}[-] START SERVICES"
+    print "${RED}[ ] CLEANUP"
+    echo -n "[3/5][===--]"
+    
+    # ==========
+
+    # INSTALLATION STEP 4 -> START SYSTEM LOGGING SERVICE
+
+    systemctl enable wlog.service
+    systemctl start wlog.service
+    
+    printf "\e[6A\e[J"
+    print "${GREEN}[✓] INSTALL A SERVICE ACCOUNT"
+    print "${GREEN}[✓] CREATE FILES/DIRECTORIES"
+    print "${GREEN}[✓] INSTALL WARDEN"
+    print "${GREEN}[✓] START SERVICES"
+    print "${YELLOW}[-] CLEANUP"
+    echo -n "[4/5][====-]"
+
+
+    # ==========
+
+    # INSTALLATION STEP 5 -> INSTALLER CLEANUP
+
+    CleanUpInstaller
+
+    printf "\e[6A\e[J"
+    print "${GREEN}[✓] INSTALL A SERVICE ACCOUNT"
+    print "${GREEN}[✓] CREATE FILES/DIRECTORIES"
+    print "${GREEN}[✓] INSTALL WARDEN"
+    print "${GREEN}[✓] START SERVICES"
+    print "${GREEN}[✓] CLEANUP"
+    echo "[5/5][=====]"
+    echo
+
+}
+
+RemoveWarden () {
+
+    rm -rf /etc/systemd/system/wlog.service
+    systemctl disable wlog.service 2> /dev/null
+    systemctl stop wlog.service 2> /dev/null
+
+    # REMOVE BLUESHELL ADMINISTRATION USER
+    userdel warden
+    groupdel warden-admin
+
+    # CLEANUP INSTALL PATHS
+    rm -rf /var/log/warden
+    rm -rf /var/lib/warden
+    rm -rf /etc/warden
+    rm -rf /opt/warden
+    rm -rf /run/warden
+
+    rm -rf /usr/bin/wsh
+    rm -rf /usr/bin/wlog
+    rm -rf /usr/bin/wcfg
+    
+    sed -i '\|/bin/wsh|d' /etc/shells
+
+}
+
+PasswordSetup () {
+
+    echo -n "New Password: "
+    read -s -r newPass; echo 
+    echo -n "Confirm Password: "
+    read -s -r confPass ; echo
+    if [ $newPass == $confPass ]; then
+        echo $newPass | sha256sum > /etc/warden/auth
+        echo "Password Setup"
+    else
+        echo "Passwords do not match"
+        PasswordSetup
+    fi
+}
+
+
+
+if (( $EUID != 0 )); 
+then
+    printWarning "This installer requires root privileges"
+else
+    cat ./.install/InstallBanner
+    echo
+    if [ -e "/bin/wsh" ] || 
+       getent passwd warden > /dev/null 2>&1; 
+    then
+        read -p "Would you like to remove Warden from your system? (Y/N): " input
+        case $input in
+            [Yy]*)
+                if RemoveWarden;
+                then 
+                    echo "Warden removed successfully from your system!"
+                fi
+            ;;
+            [Nn]*)
+                echo "Goodbye!"
+            ;;
+        esac
+
+    else
+        read -p "Would you like to install Warden? (Y/N): " input
+        case $input in
+            [Yy]* )
+                if InstallWarden;
+                then 
+                    echo "Please Create a password for the shell breakout"
+                    if PasswordSetup;
+                    then
+
+                        set -a
+                        source /etc/environment
+                        set +a
+
+                        # FIX - NOT FINAL
+                        # Fixes permission issues -> contrain to warden-admin group
+                        chgrp -R warden-admin /etc/warden
+                        chmod -R 775 /etc/warden
+                        chmod -R 755 /var/lib/warden
+
+                        echo -e "\nWARDEN has been installed successfully!"
+                        echo -e "\nFor more information, please visit:"
+                        echo "  https://github.com/SYNT4X1/warden.git"
+                    fi
+                else
+                    RemoveWarden
+                    exit 1
+                fi
+            ;;
+            [Nn]* )
+                echo "Goodbye!"
+            ;;
+        esac
+    fi
+fi
